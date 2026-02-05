@@ -1,0 +1,112 @@
+#Extracting Bogoliubov coefficients from the quantum walk, plotting the number of particles created and generating a power spectrum.
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- 1. Parameters ---
+T = 100            # Total time steps for the expansion
+Nx = 600           # Number of momentum points
+k_vals = np.linspace(-np.pi, np.pi, Nx)
+
+H = 0.01           # Hubble constant
+m = 0.05           # Mass parameter
+eta_start = -10.0  # Early conformal time
+eta_end = -1.0     # Late conformal time (approaching 0)
+
+# --- 2. Pauli Matrices ---
+sigma_z = np.array([[1, 0], [0, -1]], dtype=complex)
+sigma_y = np.array([[0, -1j], [1j, 0]], dtype=complex)
+
+def get_U(k, theta):
+    """Computes the unitary operator U(k) = S(k) @ C(theta)"""
+    # S(k) = exp(-i k sigma_z)
+    S_k = np.array([[np.exp(-1j*k), 0], 
+                    [0, np.exp(1j*k)]], dtype=complex)
+    
+    # C(theta) = exp(-i theta sigma_y) = [[cos, -sin], [sin, cos]]
+    C_t = np.array([[np.cos(theta), -np.sin(theta)],
+                    [np.sin(theta),  np.cos(theta)]], dtype=complex)
+    return S_k @ C_t
+
+def get_eigenstates(U):
+    """Returns (pos_freq_state, neg_freq_state) for a given U"""
+    eigvals, eigvecs = np.linalg.eig(U)
+    # The eigenvalues are exp(i*omega). 
+    # Positive frequency typically corresponds to the angle in [0, pi]
+    phases = np.angle(eigvals)
+    idx_pos = np.argmax(phases)
+    idx_neg = np.argmin(phases)
+    return eigvecs[:, idx_pos], eigvecs[:, idx_neg]
+
+# --- 3. Scale Factor Profile ---
+# Mapping discrete t to conformal time eta
+t_steps = np.arange(T)
+eta_t = np.linspace(eta_start, eta_end, T)
+a_t = -1 / (H * eta_t)
+
+# Define the coin angles
+theta_in = m * a_t[0]
+theta_out = m * a_t[-1]
+theta_history = m * a_t
+
+# --- 4. Main Simulation Loop ---
+n_k = np.zeros(Nx)
+
+for i, k in enumerate(k_vals):
+    # Get In-basis (early time)
+    U_in = get_U(k, theta_in)
+    phi_in_pos, _ = get_eigenstates(U_in)
+    
+    # Start evolution with the positive frequency 'in' state
+    psi_t = phi_in_pos.copy()
+    
+    # Evolve through the expansion period
+    for t in range(T):
+        U_current = get_U(k, theta_history[t])
+        psi_t = U_current @ psi_t
+        
+    # Get Out-basis (late time)
+    U_out = get_U(k, theta_out)
+    _, phi_out_neg = get_eigenstates(U_out)
+    
+    # Calculate beta_k: projection onto the negative frequency 'out' state
+    # beta_k = <phi_out_neg | psi_T>
+    beta_k = np.vdot(phi_out_neg, psi_t)
+    
+    # Particle number n_k = |beta_k|^2
+    n_k[i] = np.abs(beta_k)**2
+
+# --- 5. Plotting ---
+plt.figure(figsize=(10, 6))
+plt.plot(k_vals, n_k, color='royalblue', lw=2)
+plt.title(f"Particle Creation in de Sitter Space (DTQW Model)\n$T={T}, H={H}, m={m}$")
+plt.xlabel("Momentum $k$")
+plt.ylabel("Particle Number $n_k$ ($|\\beta_k|^2$)")
+plt.grid(alpha=0.3)
+plt.xlim(-np.pi, np.pi)
+plt.show()
+
+# Assuming you have k_vals and n_k from the previous code
+
+# 1. Calculate the Power Spectrum
+# We use np.abs(k_vals) because k can be negative, but power is usually plotted for magnitude
+power_spectrum = np.abs(k_vals) * n_k 
+
+# 2. Plotting
+plt.figure(figsize=(10, 5))
+
+plt.subplot(1, 2, 1)
+plt.plot(k_vals, n_k, label="$n_k$ (Particle Number)")
+plt.title("Particle Occupancy")
+plt.xlabel("k")
+plt.ylabel("$n_k$")
+plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(k_vals, power_spectrum, color='red', label="$\mathcal{P}(k) \propto k \cdot n_k$")
+plt.title("Power Spectrum")
+plt.xlabel("k")
+plt.ylabel("Power")
+plt.legend()
+
+plt.tight_layout()
+plt.show()
