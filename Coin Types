@@ -1,0 +1,143 @@
+#This file tests different coin types on the quantum walk to investigate the effects and physics behind a discrete-time quantum walk.
+import numpy as np
+import matplotlib.pyplot as plt
+
+class QuantumWalk1D:
+    def __init__(self, steps, coin_type='Hadamard', theta=np.pi/4):
+        """
+        Initialize the Quantum Walk simulation.
+        
+        :param steps: Total number of time steps (T).
+        :param coin_type: 'Hadamard', 'Dirac', 'TimeDependentDirac', 'Biased', 'PauliZ'.
+        :param theta: Base rotation angle. Used for Dirac and Biased coins.
+        """
+        self.steps = steps
+        self.coin_type = coin_type
+        self.base_theta = theta
+        
+        # Space setup: range from -steps to +steps
+        self.positions = np.arange(-steps, steps + 1)
+        self.n_pos = len(self.positions)
+        
+        # Initial State: |0> + i|1> at position 0 (center)
+        # We start at index `steps` which corresponds to position 0.
+        self.state = np.zeros((self.n_pos, 2), dtype=complex)
+        self.state[self.steps, 0] = 1.0 / np.sqrt(2)
+        self.state[self.steps, 1] = 1j / np.sqrt(2)
+
+    def _get_coin_matrix(self, t):
+        """
+        Returns the 2x2 coin matrix for the specific time step t.
+        """
+        
+        # 1. Hadamard Coin
+        # The standard coin for maximal superposition.
+        if self.coin_type == 'Hadamard':
+            return np.array([[1, 1], 
+                             [1, -1]]) / np.sqrt(2)
+
+        # 2. Biased Rotation Coin
+        # Real rotation. Controls bias between Left/Right.
+        # Matrix: [[cos, sin], [sin, -cos]]
+        elif self.coin_type == 'Biased':
+            c = np.cos(self.base_theta)
+            s = np.sin(self.base_theta)
+            return np.array([[c, s], 
+                             [s, -c]])
+
+        # 3. Dirac Coin
+        # Simulates the Dirac equation. Uses complex rotation.
+        # Matrix: [[cos, -i*sin], [-i*sin, cos]]
+        elif self.coin_type == 'Dirac':
+            c = np.cos(self.base_theta)
+            s = np.sin(self.base_theta)
+            return np.array([[c, -1j*s], 
+                             [-1j*s, c]])
+
+        # 4. Time-Dependent Dirac Coin
+        # The angle changes as a function of time t.
+        # Here we simulate a "perturbation" where theta decreases over time.
+        elif self.coin_type == 'TimeDependentDirac':
+            # Example function: Theta decays from base_theta to 0
+            current_theta = self.base_theta * (1 - (t / self.steps))
+            
+            c = np.cos(current_theta)
+            s = np.sin(current_theta)
+            return np.array([[c, -1j*s], 
+                             [-1j*s, c]])
+
+        # 5. Pauli-Z Coin
+        # Phase flip only. No mixing of |0> and |1>.
+        # Matrix: [[1, 0], [0, -1]]
+        elif self.coin_type == 'PauliZ':
+            return np.array([[1, 0], 
+                             [0, -1]])
+
+        else:
+            raise ValueError(f"Unknown Coin: {self.coin_type}")
+
+    def step(self, t):
+        """Perform one step: Coin(t) then Shift."""
+        
+        # A. Get Coin for this time step
+        C = self._get_coin_matrix(t)
+        
+        # B. Apply Coin Operator
+        # Apply C to the (L, R) vector at every position
+        self.state = np.dot(self.state, C.T)
+        
+        # C. Apply Shift Operator
+        # |L> moves to x-1, |R> moves to x+1
+        new_state = np.zeros_like(self.state)
+        new_state[:, 0] = np.roll(self.state[:, 0], -1) # Left
+        new_state[:, 1] = np.roll(self.state[:, 1], 1)  # Right
+        
+        self.state = new_state
+
+    def run(self):
+        """Run the simulation loop."""
+        for t in range(self.steps):
+            self.step(t)
+
+    def plot(self):
+        """Visualize the final probability distribution."""
+        probs = np.sum(np.abs(self.state)**2, axis=1)
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.positions, probs, label=f'{self.coin_type} Coin')
+        
+        title_str = f"1D Quantum Walk: {self.coin_type}"
+        if self.coin_type in ['Biased', 'Dirac']:
+            title_str += f" (theta={self.base_theta:.2f})"
+            
+        plt.title(title_str)
+        plt.xlabel('Position')
+        plt.ylabel('Probability')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.show()
+
+# ==========================================
+# USER CONFIGURATION
+# ==========================================
+
+if __name__ == "__main__":
+    
+    # PARAMETERS
+    STEPS = 100
+    
+    # SELECT COIN TYPE:
+    # Options: 'Hadamard', 'Biased', 'Dirac', 'TimeDependentDirac', 'PauliZ'
+    CURRENT_COIN = 'Dirac' 
+    
+    # THETA CONTROL:
+    # Used for Biased, Dirac, and start of TimeDependentDirac.
+    # pi/4 is maximal mixing (standard).
+    # pi/10 makes the walker "heavy" (slow spreading).
+    THETA = 3*np.pi / 7
+
+    print(f"Starting Walk with {CURRENT_COIN}...")
+    
+    qw = QuantumWalk1D(STEPS, coin_type=CURRENT_COIN, theta=THETA)
+    qw.run()
+    qw.plot()
